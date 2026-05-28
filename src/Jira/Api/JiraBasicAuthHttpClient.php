@@ -4,16 +4,33 @@ declare(strict_types=1);
 
 namespace JiraTimesheet\Jira\Api;
 
+use Http\Discovery\Psr17FactoryDiscovery;
 use JiraTimesheet\Config\JiraApiConfig;
 use JsonException;
-use RuntimeException;
+use Psr\Http\Client\ClientExceptionInterface;
+use Psr\Http\Client\ClientInterface;
+use Psr\Http\Message\RequestFactoryInterface;
+use Psr\Http\Message\RequestInterface;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\StreamFactoryInterface;
 
 final readonly class JiraBasicAuthHttpClient implements JiraHttpClient
 {
+    private ClientInterface $client;
+    private RequestFactoryInterface $requestFactory;
+    private StreamFactoryInterface $streamFactory;
+
     public function __construct(
         private JiraApiConfig $config,
-        private HttpTransport $transport = new StreamHttpTransport(),
+        ?ClientInterface $client = null,
     ) {
+        $this->client = $client ?? JiraHttpClientFactory::defaultPsr18Client();
+        $this->requestFactory = $this->client instanceof RequestFactoryInterface
+            ? $this->client
+            : Psr17FactoryDiscovery::findRequestFactory();
+        $this->streamFactory = $this->client instanceof StreamFactoryInterface
+            ? $this->client
+            : Psr17FactoryDiscovery::findStreamFactory();
     }
 
     /**
@@ -27,37 +44,35 @@ final readonly class JiraBasicAuthHttpClient implements JiraHttpClient
         $encodedBody = $this->encodeBody($body, $method, $path);
 
         try {
-            $response = $this->transport->send(
-                $method,
-                $this->config->baseUrl . $path,
-                $this->headers($encodedBody !== null),
-                $encodedBody,
-            );
-        } catch (RuntimeException $exception) {
+            $response = $this->client->sendRequest($this->psrRequest($method, $path, $encodedBody));
+        } catch (ClientExceptionInterface $exception) {
             throw new JiraApiException(\sprintf(
                 'Jira API transport failed for %s %s: %s',
                 $method,
                 $path,
                 $this->maskToken($exception->getMessage()),
-            ), previous: $exception);
-        }
-
-        if ($response->statusCode < 200 || $response->statusCode >= 300) {
-            throw new JiraApiException(\sprintf(
-                'Jira API request failed (%d) for %s %s: %s',
-                $response->statusCode,
-                $method,
-                $path,
-                $this->errorMessage($response),
             ));
         }
 
-        if (\trim($response->body) === '') {
+        $statusCode = $response->getStatusCode();
+        $responseBody = $this->responseBody($response);
+
+        if ($statusCode < 200 || $statusCode >= 300) {
+            throw new JiraApiException(\sprintf(
+                'Jira API request failed (%d) for %s %s: %s',
+                $statusCode,
+                $method,
+                $path,
+                $this->errorMessage($responseBody),
+            ));
+        }
+
+        if (\trim($responseBody) === '') {
             return [];
         }
 
         try {
-            $decoded = \json_decode($response->body, true, flags: \JSON_THROW_ON_ERROR);
+            $decoded = \json_decode($responseBody, true, flags: \JSON_THROW_ON_ERROR);
         } catch (JsonException $exception) {
             throw new JiraApiException(\sprintf(
                 'Invalid JSON response from Jira API for %s %s',
@@ -120,14 +135,34 @@ final readonly class JiraBasicAuthHttpClient implements JiraHttpClient
         return $headers;
     }
 
-    private function errorMessage(HttpResponse $response): string
+    private function psrRequest(string $method, string $path, ?string $body): RequestInterface
     {
-        if (\trim($response->body) === '') {
+        $request = $this->requestFactory->createRequest($method, $this->config->baseUrl . $path);
+
+        foreach ($this->headers($body !== null) as $name => $value) {
+            $request = $request->withHeader($name, $value);
+        }
+
+        if ($body !== null) {
+            $request = $request->withBody($this->streamFactory->createStream($body));
+        }
+
+        return $request;
+    }
+
+    private function responseBody(ResponseInterface $response): string
+    {
+        return (string) $response->getBody();
+    }
+
+    private function errorMessage(string $body): string
+    {
+        if (\trim($body) === '') {
             return 'empty response body';
         }
 
         try {
-            $decoded = \json_decode($response->body, true, flags: \JSON_THROW_ON_ERROR);
+            $decoded = \json_decode($body, true, flags: \JSON_THROW_ON_ERROR);
         } catch (JsonException) {
             return 'non-JSON error response';
         }
