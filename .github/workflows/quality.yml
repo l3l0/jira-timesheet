@@ -1,0 +1,34 @@
+name: Quality
+
+on:
+  push:
+    branches:
+      - master
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    env:
+      COMPOSER_HOME: /tmp/composer
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set Docker user
+        run: |
+          echo "HOST_UID=$(id -u)" >> "$GITHUB_ENV"
+          echo "HOST_GID=$(id -g)" >> "$GITHUB_ENV"
+
+      - name: Build application image
+        run: make build
+
+      - name: Install dependencies
+        run: make composer_install
+
+      - name: Run quality gate
+        run: make check

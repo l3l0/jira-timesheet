@@ -1,0 +1,18 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+use JiraTimesheet\Console\JiraTimesheetCommand;
+use Symfony\Component\Console\Application;
+
+require __DIR__ . '/../vendor/autoload.php';
+
+$application = new Application('jira-timesheet');
+$command = new JiraTimesheetCommand();
+
+$application->addCommand($command);
+$application->setDefaultCommand((string) $command->getName(), true);
+$application->setAutoExit(false);
+
+exit($application->run());

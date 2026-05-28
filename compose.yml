@@ -1,0 +1,22 @@
+services:
+  application:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    working_dir: /app
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    volumes:
+      - .:/app
+      - /tmp:/tmp
+    environment:
+      COMPOSER_ALLOW_SUPERUSER: "1"
+      COMPOSER_HOME: /tmp/composer
+      JIRA_BASE_URL: "${JIRA_BASE_URL:-}"
+      JIRA_EMAIL: "${JIRA_EMAIL:-}"
+      JIRA_API_TOKEN: "${JIRA_API_TOKEN:-}"
+      JIRA_JQL: "${JIRA_JQL:-}"
+      JIRA_TIMEZONE: "${JIRA_TIMEZONE:-Europe/Warsaw}"
+      JIRA_FROM: "${JIRA_FROM:-}"
+      JIRA_TO: "${JIRA_TO:-}"
+      JIRA_OUTPUT: "${JIRA_OUTPUT:-}"
+    tty: true

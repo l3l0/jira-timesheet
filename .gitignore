@@ -1,0 +1,8 @@
+vendor/
+.env
+.env.*
+!.env.example
+.phpunit.cache/
+.php-cs-fixer.cache
+__pycache__/
+raports/
