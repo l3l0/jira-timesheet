@@ -8,7 +8,8 @@ use Closure;
 use JiraTimesheet\Config\JiraApiConfig;
 use JiraTimesheet\Config\JiraApiConfigResolver;
 use JiraTimesheet\Jira\Api\JiraApiWorklogReader;
-use JiraTimesheet\Jira\Api\JiraBasicAuthHttpClient;
+use JiraTimesheet\Jira\Api\JiraHttpClient;
+use JiraTimesheet\Jira\Api\JiraHttpClientFactory;
 use JiraTimesheet\Jira\Api\JiraIssueSource;
 use JiraTimesheet\Jira\JiraCsvReader;
 use JiraTimesheet\Jira\WorklogEntry;
@@ -26,6 +27,7 @@ final class JiraTimesheetCommand extends Command
 {
     /**
      * @param null|Closure(JiraApiConfig): list<WorklogEntry> $apiEntriesProvider
+     * @param null|Closure(JiraApiConfig): JiraHttpClient $httpClientProvider
      */
     public function __construct(
         private readonly JiraCsvReader $reader = new JiraCsvReader(),
@@ -34,6 +36,7 @@ final class JiraTimesheetCommand extends Command
         private readonly TimesheetTableRenderer $renderer = new TimesheetTableRenderer(),
         private readonly JiraApiConfigResolver $configResolver = new JiraApiConfigResolver(),
         private readonly ?Closure $apiEntriesProvider = null,
+        private readonly ?Closure $httpClientProvider = null,
     ) {
         parent::__construct('jira-timesheet');
     }
@@ -125,10 +128,17 @@ final class JiraTimesheetCommand extends Command
             return $provider($config);
         }
 
-        $httpClient = new JiraBasicAuthHttpClient($config);
+        $httpClient = $this->httpClient($config);
         $issues = (new JiraIssueSource($httpClient))->search($config->jql);
 
         return (new JiraApiWorklogReader($httpClient))->read($issues, $config->from, $config->to, $config->timezone);
+    }
+
+    private function httpClient(JiraApiConfig $config): JiraHttpClient
+    {
+        $provider = $this->httpClientProvider;
+
+        return $provider === null ? JiraHttpClientFactory::create($config) : $provider($config);
     }
 
     private function argument(InputInterface $input, string $name): ?string

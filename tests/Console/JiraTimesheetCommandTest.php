@@ -13,12 +13,18 @@ use function fclose;
 use function fgetcsv;
 use function file_put_contents;
 
+use JiraTimesheet\Config\JiraApiConfig;
 use JiraTimesheet\Config\JiraApiConfigResolver;
 use JiraTimesheet\Config\SymfonyDotEnvLoader;
 use JiraTimesheet\Console\JiraTimesheetCommand;
+use JiraTimesheet\Jira\Api\JiraBasicAuthHttpClient;
 use JiraTimesheet\Jira\WorklogEntry;
+use Nyholm\Psr7\Response;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use Psr\Http\Client\ClientInterface;
+use Psr\Http\Message\RequestInterface;
+use Psr\Http\Message\ResponseInterface;
 use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Tester\ApplicationTester;
 
@@ -102,6 +108,51 @@ ENV);
     }
 
     #[Test]
+    public function it_runs_api_mode_through_injected_psr18_http_client_without_real_network(): void
+    {
+        $envPath = (string) tempnam(sys_get_temp_dir(), 'jira-env-');
+        $outputPath = (string) tempnam(sys_get_temp_dir(), 'jira-api-output-');
+        file_put_contents($envPath, <<<'ENV'
+JIRA_BASE_URL=https://example.atlassian.net
+JIRA_EMAIL=user@example.com
+JIRA_API_TOKEN=super-secret-token
+JIRA_JQL="project = PAR"
+JIRA_FROM=2026-05-01
+JIRA_TO=2026-06-01
+ENV);
+
+        $psr18Client = new SequentialPsr18Client([
+            new Response(200, [], '{"isLast":true,"issues":[{"key":"PAR-1","fields":{"summary":"First issue"}}]}'),
+            new Response(200, [], '{"accountId":"me-123"}'),
+            new Response(200, [], '{"startAt":0,"maxResults":100,"total":1,"worklogs":[{"id":"10001","started":"2026-05-02T10:00:00.000+0200","timeSpentSeconds":3600,"author":{"accountId":"me-123"}}]}'),
+        ]);
+
+        [$stdout, $stderr] = $this->runCommand(
+            ['jira-timesheet', 'api', '--env', $envPath, '--output', $outputPath],
+            new JiraApiConfigResolver(new SymfonyDotEnvLoader(), []),
+            null,
+            static fn (JiraApiConfig $config): JiraBasicAuthHttpClient => new JiraBasicAuthHttpClient($config, $psr18Client),
+        );
+
+        self::assertSame(0, $stdout['exitCode']);
+        self::assertSame('', $stderr['output']);
+        self::assertStringContainsString('PAR-1', $stdout['output']);
+        self::assertStringNotContainsString('super-secret-token', $stdout['output'] . $stderr['output']);
+        self::assertCount(3, $psr18Client->requests);
+        self::assertSame('POST', $psr18Client->requests[0]->getMethod());
+        self::assertSame('https://example.atlassian.net/rest/api/3/search/jql', (string) $psr18Client->requests[0]->getUri());
+        self::assertSame('Basic ' . \base64_encode('user@example.com:super-secret-token'), $psr18Client->requests[0]->getHeaderLine('Authorization'));
+        self::assertSame('{"jql":"project = PAR","fields":["summary"],"maxResults":100}', (string) $psr18Client->requests[0]->getBody());
+        self::assertSame('https://example.atlassian.net/rest/api/3/myself', (string) $psr18Client->requests[1]->getUri());
+        self::assertSame('https://example.atlassian.net/rest/api/3/issue/PAR-1/worklog?startAt=0&maxResults=100', (string) $psr18Client->requests[2]->getUri());
+
+        $rows = $this->readCsv($outputPath);
+
+        self::assertSame(['2026-05-02', 'task', 'PAR-1', 'First issue', '1.00', '3600'], $rows[1]);
+        self::assertSame(['2026-05-02', 'total', '', 'TOTAL', '1.00', '3600'], $rows[2]);
+    }
+
+    #[Test]
     public function it_generates_csv_report_and_prints_table_for_valid_input(): void
     {
         $outputPath = (string) tempnam(sys_get_temp_dir(), 'jira-output-');
@@ -171,11 +222,16 @@ ENV);
      * @param list<string> $argv
      * @return array{array{exitCode:int, output:string}, array{output:string}}
      */
-    private function runCommand(array $argv, ?JiraApiConfigResolver $configResolver = null, ?Closure $apiEntriesProvider = null): array
-    {
+    private function runCommand(
+        array $argv,
+        ?JiraApiConfigResolver $configResolver = null,
+        ?Closure $apiEntriesProvider = null,
+        ?Closure $httpClientProvider = null,
+    ): array {
         $command = new JiraTimesheetCommand(
             configResolver: $configResolver ?? new JiraApiConfigResolver(new SymfonyDotEnvLoader(), []),
             apiEntriesProvider: $apiEntriesProvider,
+            httpClientProvider: $httpClientProvider,
         );
         $application = new Application('jira-timesheet');
         $application->addCommand($command);
@@ -272,5 +328,25 @@ ENV);
         fclose($handle);
 
         return $rows;
+    }
+}
+
+final class SequentialPsr18Client implements ClientInterface
+{
+    /** @var list<RequestInterface> */
+    public array $requests = [];
+
+    /**
+     * @param list<ResponseInterface> $responses
+     */
+    public function __construct(private array $responses)
+    {
+    }
+
+    public function sendRequest(RequestInterface $request): ResponseInterface
+    {
+        $this->requests[] = $request;
+
+        return \array_shift($this->responses) ?? new Response(500, [], '{"errorMessages":["unexpected request"]}');
     }
 }

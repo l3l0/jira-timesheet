@@ -8,7 +8,7 @@ A PHP/FlowPHP CLI tool that turns a Jira CSV export or Jira Cloud API worklogs i
 - Docker Compose
 - Make
 
-The application runtime runs in a PHP 8.5 container. The currently installed runtime dependencies include `flow-php/etl`, `symfony/console`, and `symfony/dotenv`.
+The application runtime runs in a PHP 8.5 container. The currently installed runtime dependencies include `flow-php/etl`, Symfony Console/Dotenv, Symfony HttpClient, PSR HTTP contracts, `nyholm/psr7`, and `php-http/discovery`.
 
 ## Installation and Tests
 
@@ -57,6 +57,12 @@ make report_api FROM=2026-05-01 TO=2026-06-01 OUTPUT=/tmp/jira_api_grouped.csv
 CLI arguments take precedence over environment variables, and environment variables take precedence over `.env`. If `JIRA_FROM`, `JIRA_TO`, or `JIRA_OUTPUT` are set in `.env`, you can omit the corresponding `FROM`, `TO`, and `OUTPUT` Make variables.
 
 API mode searches for issues with JQL, fetches worklogs per issue, filters them by `started` in the `[FROM, TO)` range, and by default keeps only the worklogs of the current token user. The `--issue`, `--issues-file`, and all-visible-authors report modes are not part of the current version.
+
+## HTTP Client
+
+Jira API mode uses PSR-18 as the HTTP client contract. The default runtime client is Symfony HttpClient adapted through `Symfony\Component\HttpClient\Psr18Client` with a 30-second timeout.
+
+Maintainers can pass any `Psr\Http\Client\ClientInterface` to `JiraBasicAuthHttpClient`. PSR-7/PSR-17 request creation is handled internally through `php-http/discovery`, pinned in Composer to the installed Symfony/Nyholm implementations.
 
 ## CSV Format
 
