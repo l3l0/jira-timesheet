@@ -16,18 +16,20 @@ OUTPUT ?= raports/grouped.csv
 FROM ?=
 TO ?=
 JQL ?=
+TIMEZONE ?=
 ENV_FILE ?=
 CMD ?= bash
 JQL_ARG = $(if $(JQL),--jql "$(JQL)",)
 ENV_ARG = $(if $(ENV_FILE),--env ${ENV_FILE},)
 FROM_ARG = $(if $(FROM),--from ${FROM},)
 TO_ARG = $(if $(TO),--to ${TO},)
+TIMEZONE_ARG = $(if $(TIMEZONE),--timezone ${TIMEZONE},)
 OUTPUT_ARG = $(if $(OUTPUT),--output ${OUTPUT},)
 
 export HOST_UID
 export HOST_GID
 
-.PHONY: help build up down composer_install test stan cs cs_fix check bash run report report_api
+.PHONY: help build up down composer_install test stan cs cs_fix check bash run report report_api report_api_summary
 
 help: # Show help for each Makefile recipe.
 	@grep -E '^[a-zA-Z0-9_-]+:.*#' Makefile | sort | while read -r l; do printf "\033[1;32m$$(echo $$l | cut -f 1 -d':')\033[00m:$$(echo $$l | cut -f 2- -d'#')\n"; done
@@ -68,4 +70,7 @@ report: # Generate Jira grouped report; override INPUT and OUTPUT.
 	${EXEC_COMMAND} php bin/jira-timesheet ${INPUT} ${OUTPUT}
 
 report_api: # Generate Jira grouped report from Jira API config; override FROM, TO, OUTPUT, ENV_FILE, optional JQL.
-	${EXEC_COMMAND} php bin/jira-timesheet api ${ENV_ARG} ${FROM_ARG} ${TO_ARG} ${OUTPUT_ARG} ${JQL_ARG}
+	${EXEC_COMMAND} php bin/jira-timesheet api ${ENV_ARG} ${FROM_ARG} ${TO_ARG} ${TIMEZONE_ARG} ${OUTPUT_ARG} ${JQL_ARG}
+
+report_api_summary: # Print daily Jira API hour totals; override FROM, TO, ENV_FILE, TIMEZONE, optional JQL.
+	${EXEC_COMMAND} php bin/jira-timesheet api:daily-summary ${ENV_ARG} ${FROM_ARG} ${TO_ARG} ${TIMEZONE_ARG} ${JQL_ARG}

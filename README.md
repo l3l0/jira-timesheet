@@ -58,6 +58,24 @@ CLI arguments take precedence over environment variables, and environment variab
 
 API mode searches for issues with JQL, fetches worklogs per issue, filters them by `started` in the `[FROM, TO)` range, and by default keeps only the worklogs of the current token user. The `--issue`, `--issues-file`, and all-visible-authors report modes are not part of the current version.
 
+### Daily API Summary
+
+Use the dedicated API summary command when you only need daily totals and the total for the selected period:
+
+```bash
+make report_api_summary FROM=2026-05-01 TO=2026-06-01
+```
+
+The command prints a console table with `Date`, `Hours`, and `Seconds` columns. It does not require `OUTPUT` or `JIRA_OUTPUT`.
+
+Direct CLI equivalent:
+
+```bash
+php bin/jira-timesheet api:daily-summary --from 2026-05-01 --to 2026-06-01
+```
+
+As with API report mode, configuration can come from `.env`, environment variables, or CLI options. CLI values take precedence.
+
 ## HTTP Client
 
 Jira API mode uses PSR-18 as the HTTP client contract. The default runtime client is Symfony HttpClient adapted through `Symfony\Component\HttpClient\Psr18Client` with a 30-second timeout.

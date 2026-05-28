@@ -3,6 +3,7 @@
 
 declare(strict_types=1);
 
+use JiraTimesheet\Console\JiraDailySummaryCommand;
 use JiraTimesheet\Console\JiraTimesheetCommand;
 use Symfony\Component\Console\Application;
 
@@ -12,7 +13,12 @@ $application = new Application('jira-timesheet');
 $command = new JiraTimesheetCommand();
 
 $application->addCommand($command);
-$application->setDefaultCommand((string) $command->getName(), true);
+$application->addCommand(new JiraDailySummaryCommand());
+
+if (($argv[1] ?? null) !== 'api:daily-summary') {
+    $application->setDefaultCommand((string) $command->getName(), true);
+}
+
 $application->setAutoExit(false);
 
 exit($application->run());
