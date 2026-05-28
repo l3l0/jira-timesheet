@@ -20,7 +20,7 @@ final class JiraApiConfigResolver
     /**
      * @param list<string> $arguments
      */
-    public function resolve(array $arguments, string $workingDirectory = '.'): JiraApiConfig
+    public function resolve(array $arguments, string $workingDirectory = '.', bool $requireOutput = true): JiraApiConfig
     {
         $options = $this->parseOptions($arguments);
         $explicitEnvPath = \array_key_exists('env', $options);
@@ -43,15 +43,20 @@ final class JiraApiConfigResolver
         $output = $this->stringValue($options['output'] ?? $values['JIRA_OUTPUT'] ?? '');
         $timezone = $this->stringValue($options['timezone'] ?? $values['JIRA_TIMEZONE'] ?? 'Europe/Warsaw');
 
-        $this->assertRequired([
+        $required = [
             'JIRA_BASE_URL' => $baseUrl,
             'JIRA_EMAIL' => $email,
             'JIRA_API_TOKEN' => $apiToken,
             'JIRA_JQL' => $jql,
             'from' => $from,
             'to' => $to,
-            'output' => $output,
-        ]);
+        ];
+
+        if ($requireOutput) {
+            $required['output'] = $output;
+        }
+
+        $this->assertRequired($required);
         $this->assertDateRange($from, $to);
 
         return new JiraApiConfig(
